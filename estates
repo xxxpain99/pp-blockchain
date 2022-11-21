@@ -1,0 +1,198 @@
+// SPDX-License-Identifier: MIT
+pragma solidity >=0.4.22 <0.9.0;
+
+contract Estates {
+
+  address admin1 = 0x73ce852d5c66E30C81bFc8b445A9d2D725560bE7;
+  address owner1 = 0x704256ad9c1726c04368e7aC1059bB72b96e8B42;
+
+  enum Roles{Administrator, Owner}
+  
+
+  struct Estate //Недвижемость
+  { 
+    address owner;
+    uint square;
+    uint service_life;
+    bool insurance;
+  }
+
+    mapping (uint => Estate) public estates;
+    uint estate_length = 0;
+
+    struct User//Пользователь
+  { 
+    address user;
+    string name;
+    string role;
+    uint coins;
+  }
+
+  
+
+    mapping (uint => User) public users;
+    uint user_length = 0;
+    
+
+    struct Rent {
+      address owner;
+      uint estateID;
+      address rent_to;
+      uint cost;
+      uint period;
+      bool accept;
+      bool IsDeleted;
+    }
+
+    mapping (uint => Rent) public rents;
+    uint rent_length = 0;
+
+    struct Firstbet {
+      uint IDRent;
+      address owner;
+      uint cost;
+    }
+
+    mapping (uint => Firstbet) public firstbets;
+    uint firstbets_length = 0;
+
+//загрузка пользователь
+    function LoadUsers() public  {
+    users[user_length] = User(admin1,"Ivan", "Administrator", 70);
+    user_length = user_length + 1;
+    users[user_length] = User(owner1,"Oleg", "Owner", 70);
+    user_length = user_length + 1;
+    }
+//загрузка недвижимости
+    function LoadEstates () public {
+      estates[estate_length] = Estate(owner1, 50,7, true);
+      estate_length = estate_length + 1;
+    }
+//создание недвижимости
+    function CreateEstate(address owner, uint square, uint useful_area) public  {
+      bool error = true;
+      require (useful_area <= square, "useful_area can't be more then square!");
+      for (uint i = 0; i <= user_length; i++) {
+        //провека если есть такой пользователь
+        if (msg.sender == users[i].user ){
+          //проверка на Eадмина
+          if (keccak256(abi.encodePacked(users[i].role)) == keccak256(abi.encodePacked("Owner"))){
+            estates[estate_length] = Estate(owner, square, useful_area,false);
+            estate_length = estate_length + 1;
+            error = false;
+          }
+        }
+      }
+      if (error == true) {
+        revert("ERROR. You're a not Owner!!!");
+      }
+    }
+//Принять недвижимость
+    function AcceptEstate(uint IDestate) public {
+      for (uint i = 0; i <= user_length; i++) {
+        if (msg.sender == users[i].user ) {
+          if (keccak256(abi.encodePacked(users[i].role)) == keccak256(abi.encodePacked("Administrator"))) {
+            if(estates[IDestate].insurance == false)
+            {
+             estates[IDestate].insurance = true; 
+            }
+            else {
+            revert("ERROR. Estate has already been registered!");
+            }
+          }
+        }
+      }
+    }
+//Создать пользователя    
+    function CreateUser(address user, string memory name,string memory Role) public {
+      bool error = true;
+      for (uint i = 0; i <= user_length; i++) {
+        if (msg.sender == users[i].user ) {
+          if (keccak256(abi.encodePacked(users[i].role)) == keccak256(abi.encodePacked("Administrator"))) {
+             users[user_length] = User(user, name, Role,100);
+            user_length = user_length + 1; 
+            error = false;
+          } 
+        }
+      }
+      if (error == true) {
+        revert("ERROR. You're a not Admin!!!");
+      }
+    }
+
+//изменение роли    
+    function ChangeRoles(uint ID, string memory role) public {
+       bool error = true;
+      for (uint i = 0; i <= user_length; i++) {
+        if (msg.sender == users[i].user ) {
+          if (keccak256(abi.encodePacked(users[i].role)) == keccak256(abi.encodePacked("Administrator"))) {
+             users[ID].role = role;
+          }
+        }
+      }
+      if (error == true) {
+        revert("ERROR. You're a not Admin!!!");
+      }
+    }
+//выставка недвижимости на аренду
+    function ToRentOut(uint IDestate, uint cost, uint period) public {
+      require (msg.sender == estates[IDestate].owner, "You're a not Owner!");
+      rents[rent_length] = Rent(msg.sender,IDestate,msg.sender,cost,period,false,false);
+      rent_length = rent_length + 1;
+      firstbets[firstbets_length] = Firstbet(firstbets_length, msg.sender,cost);
+      firstbets_length = firstbets_length +1;
+    }
+//ставка на недвижимость
+    function RentEstate (uint IDrent,uint cost) public {
+      require(cost>=rents[IDrent].cost, "You can't put less");
+      require(msg.sender != rents[IDrent].owner, "You're the owner of this Estate!");
+      require(rents[IDrent].accept == false, "The Estate is already rented");
+      require(rents[IDrent].IsDeleted == false, "This Estate has already been deleted");
+      require(IDrent <= rent_length, "There is no such Rent");
+      rents[IDrent].cost = cost;
+      rents[IDrent].rent_to = msg.sender;
+    }
+//принятие данного предложения(подписание аренды)
+    function RentAccept (uint IDrent, bool TF) public {
+      require(msg.sender == rents[IDrent].owner, "You're not the owner of this Estate!");
+      require(rents[IDrent].accept == false, "The Estate is already rented");
+      require(IDrent <= rent_length, "There is no such Rent");
+      if (TF = true) {
+        rents[IDrent].accept = true;
+        
+        for (uint i = 0; i<= user_length; i++) {
+          if (rents[IDrent].owner == users[i].user) {
+            users[i].coins = users[i].coins + rents[IDrent].cost;
+          }
+          if (rents[IDrent].rent_to == users[i].user) {
+            users[i].coins = users[i].coins - rents[IDrent].cost;
+            estates[rents[IDrent].estateID].owner = rents[IDrent].rent_to;
+          }
+        }
+      }
+      else {
+        return;
+      }
+    }
+//Удаление аренды от собственника
+    function DeleteRent (uint IDrent, bool Delete) public {
+      require(msg.sender == rents[IDrent].owner, "You're not the owner of this Estate!");
+      require(rents[IDrent].accept == false, "The Estate is already rented");
+      require(IDrent <= rent_length, "There is no such Rent");
+      if (Delete == true) {
+        rents[IDrent].IsDeleted = true;
+      }
+      else {
+        revert("The Rent has not been deleted!");
+      }
+    }
+//Отмена ставки арендодателя
+    function CancelRent(uint IDrent) public {
+      require(msg.sender == rents[IDrent].rent_to, "You have not placed a bet on this State" );
+      require(rents[IDrent].accept == false, "The Estate is already rented");
+      require(rents[IDrent].IsDeleted == false, "This Estate has already been deleted");
+      require(IDrent <= rent_length, "There is no such Rent");
+      rents[IDrent].cost = firstbets[IDrent].cost;
+      rents[IDrent].rent_to = firstbets[IDrent].owner;  
+    }
+}
